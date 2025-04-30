@@ -40,7 +40,7 @@ const Header = ({ user, onLogout }: HeaderProps) => {
     }
   };
 
-  const userInitials = user?.username ? user.username.substring(0, 2).toUpperCase() : "EC";
+  const userInitials = user?.username ? user.username.substring(0, 2).toUpperCase() : "FP";
 
   return (
     <header className="sticky top-0 z-10 bg-white shadow-sm border-b border-gray-200">
@@ -48,9 +48,9 @@ const Header = ({ user, onLogout }: HeaderProps) => {
         <div className="flex items-center">
           <Link to="/" className="flex items-center gap-2">
             <div className="flex items-center justify-center w-10 h-10 rounded-full bg-echo-primary">
-              <span className="text-white font-bold text-lg">E</span>
+              <span className="text-white font-bold text-lg">F</span>
             </div>
-            <span className="text-xl font-bold text-echo-primary hidden sm:block">Echo</span>
+            <span className="text-xl font-bold text-echo-primary hidden sm:block">FederalPH</span>
           </Link>
         </div>
         
