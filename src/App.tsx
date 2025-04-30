@@ -3,8 +3,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { useState } from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useState, useEffect } from "react";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import PasswordReset from "./pages/PasswordReset";
@@ -25,6 +25,7 @@ const queryClient = new QueryClient({
 const App = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
+  const [posts, setPosts] = useState([]);
   
   // These are placeholder handlers that would use Supabase in a complete app
   const handleSignIn = async (values: AuthFormValues): Promise<User> => {
@@ -134,11 +135,13 @@ const App = () => {
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<MainLayout user={user} loading={loading} requireAuth={false} onLogout={handleLogout} />}>
-              <Route index element={<Index />} />
+              <Route index element={<Index user={user} posts={posts} />} />
             </Route>
             
             <Route path="/auth" element={<MainLayout user={user} loading={loading} requireAuth={false} onLogout={handleLogout} />}>
-              <Route index element={<Auth onSignIn={handleSignIn} onSignUp={handleSignUp} loading={loading} />} />
+              <Route index element={
+                user ? <Navigate to="/" replace /> : <Auth onSignIn={handleSignIn} onSignUp={handleSignUp} loading={loading} />
+              } />
             </Route>
             
             <Route path="/reset-password" element={<MainLayout user={user} loading={loading} requireAuth={false} onLogout={handleLogout} />}>

@@ -1,19 +1,32 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Post, User } from "@/types";
 import Home from "./Home";
 import { supabaseClient } from "@/lib/supabase";
 import { toast } from "sonner";
 
-const Index = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [loading, setLoading] = useState(true);
+interface IndexProps {
+  user?: User | null;
+  posts?: Post[];
+}
+
+const Index = ({ user: propUser, posts: propPosts }: IndexProps) => {
+  const [user, setUser] = useState<User | null>(propUser || null);
+  const [posts, setPosts] = useState<Post[]>(propPosts || []);
+  const [loading, setLoading] = useState(!propUser);
+  const navigate = useNavigate();
 
   // In a real app with Supabase, we would use this to check for an existing session
   useEffect(() => {
+    // If user is provided through props, use that instead of checking
+    if (propUser) {
+      setUser(propUser);
+      setLoading(false);
+      return;
+    }
+
     const checkSession = async () => {
       setLoading(true);
       try {
@@ -33,7 +46,21 @@ const Index = () => {
     };
 
     checkSession();
-  }, []);
+  }, [propUser]);
+
+  // Update user state when prop changes
+  useEffect(() => {
+    if (propUser) {
+      setUser(propUser);
+    }
+  }, [propUser]);
+
+  // Update posts state when prop changes
+  useEffect(() => {
+    if (propPosts) {
+      setPosts(propPosts);
+    }
+  }, [propPosts]);
 
   // Empty fetch posts function - will be implemented with Supabase
   const fetchPosts = async () => {
