@@ -1,27 +1,32 @@
 
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import AuthForm from "@/components/auth/AuthForm";
-import { AuthFormValues, User } from "@/types";
+import { AuthFormValues } from "@/types";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
-interface AuthProps {
-  onSignIn: (values: AuthFormValues) => Promise<User>;
-  onSignUp: (values: AuthFormValues) => Promise<User>;
-  loading: boolean;
-}
-
-const Auth = ({ onSignIn, onSignUp, loading }: AuthProps) => {
+const Auth = () => {
   const [authLoading, setAuthLoading] = useState(false);
+  const navigate = useNavigate();
   
   const handleSignIn = async (values: AuthFormValues) => {
     setAuthLoading(true);
     try {
-      await onSignIn(values);
+      const { error } = await supabase.auth.signInWithPassword({
+        email: values.email,
+        password: values.password,
+      });
+      
+      if (error) {
+        throw error;
+      }
+      
       toast.success("Signed in successfully");
-    } catch (error) {
+      navigate("/");
+    } catch (error: any) {
       console.error("Sign in error:", error);
-      toast.error("Failed to sign in. Please check your credentials.");
-      throw error;
+      toast.error(error.message || "Failed to sign in. Please check your credentials.");
     } finally {
       setAuthLoading(false);
     }
@@ -30,12 +35,26 @@ const Auth = ({ onSignIn, onSignUp, loading }: AuthProps) => {
   const handleSignUp = async (values: AuthFormValues) => {
     setAuthLoading(true);
     try {
-      await onSignUp(values);
-      toast.success("Account created successfully");
-    } catch (error) {
+      // Register user with Supabase
+      const { error } = await supabase.auth.signUp({
+        email: values.email,
+        password: values.password,
+        options: {
+          data: {
+            username: values.username,
+          },
+        },
+      });
+      
+      if (error) {
+        throw error;
+      }
+      
+      toast.success("Account created successfully! Please check your email to verify your account.");
+      // Don't redirect immediately as they may need to verify email first
+    } catch (error: any) {
       console.error("Sign up error:", error);
-      toast.error("Failed to create account. Please try again.");
-      throw error;
+      toast.error(error.message || "Failed to create account. Please try again.");
     } finally {
       setAuthLoading(false);
     }
@@ -46,7 +65,7 @@ const Auth = ({ onSignIn, onSignUp, loading }: AuthProps) => {
       <AuthForm 
         onSignIn={handleSignIn} 
         onSignUp={handleSignUp} 
-        loading={authLoading || loading} 
+        loading={authLoading} 
       />
     </div>
   );

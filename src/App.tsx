@@ -11,7 +11,9 @@ import PasswordReset from "./pages/PasswordReset";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 import MainLayout from "./components/layout/MainLayout";
-import { User, AuthFormValues, UserProfile } from "./types";
+import { User, UserProfile } from "./types";
+import { supabase } from "@/integrations/supabase/client";
+import { Session } from "@supabase/supabase-js";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,64 +26,57 @@ const queryClient = new QueryClient({
 
 const App = () => {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
   const [posts, setPosts] = useState([]);
   
-  // These are placeholder handlers that would use Supabase in a complete app
-  const handleSignIn = async (values: AuthFormValues): Promise<User> => {
-    setLoading(true);
-    try {
-      // Simulate API call to Supabase Auth
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Create a dummy user for demonstration
-      const dummyUser = {
-        id: "user-1",
-        email: values.email,
-        username: values.username || "demoUser",
-        created_at: new Date().toISOString()
-      };
-      
-      setUser(dummyUser);
-      return dummyUser;
-    } catch (error) {
-      console.error("Sign in error:", error);
-      throw new Error("Authentication failed");
-    } finally {
+  useEffect(() => {
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, newSession) => {
+        setSession(newSession);
+        if (newSession?.user) {
+          const userData: User = {
+            id: newSession.user.id,
+            email: newSession.user.email || '',
+            username: newSession.user.user_metadata.username || '',
+            created_at: newSession.user.created_at
+          };
+          setUser(userData);
+        } else {
+          setUser(null);
+        }
+        setLoading(false);
+      }
+    );
+
+    // THEN check for existing session
+    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      setSession(currentSession);
+      if (currentSession?.user) {
+        const userData: User = {
+          id: currentSession.user.id,
+          email: currentSession.user.email || '',
+          username: currentSession.user.user_metadata.username || '',
+          created_at: currentSession.user.created_at
+        };
+        setUser(userData);
+      }
       setLoading(false);
-    }
-  };
-  
-  const handleSignUp = async (values: AuthFormValues): Promise<User> => {
-    setLoading(true);
-    try {
-      // Simulate API call to Supabase Auth
-      await new Promise(resolve => setTimeout(resolve, 1200));
-      
-      // Create a dummy user for demonstration
-      const dummyUser = {
-        id: "user-1",
-        email: values.email,
-        username: values.username,
-        created_at: new Date().toISOString()
-      };
-      
-      setUser(dummyUser);
-      return dummyUser;
-    } catch (error) {
-      console.error("Sign up error:", error);
-      throw new Error("Registration failed");
-    } finally {
-      setLoading(false);
-    }
-  };
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
   
   const handleLogout = async () => {
     setLoading(true);
     try {
-      // Simulate API call to Supabase Auth
-      await new Promise(resolve => setTimeout(resolve, 500));
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        throw error;
+      }
       setUser(null);
+      setSession(null);
     } catch (error) {
       console.error("Logout error:", error);
       throw new Error("Logout failed");
@@ -93,12 +88,18 @@ const App = () => {
   const handleResetPassword = async (email: string) => {
     setLoading(true);
     try {
-      // Simulate API call to Supabase Auth
-      await new Promise(resolve => setTimeout(resolve, 800));
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + '/reset-password',
+      });
+      
+      if (error) {
+        throw error;
+      }
+      
       console.log("Password reset requested for:", email);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Password reset error:", error);
-      throw new Error("Password reset failed");
+      throw new Error(error.message || "Password reset failed");
     } finally {
       setLoading(false);
     }
@@ -107,10 +108,23 @@ const App = () => {
   const handleUpdateProfile = async (profile: UserProfile): Promise<User> => {
     setLoading(true);
     try {
-      // Simulate API call to Supabase
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Update user metadata in Supabase
+      const { error } = await supabase.auth.updateUser({
+        data: profile
+      });
       
-      // Update the user with the new profile info
+      if (error) {
+        throw error;
+      }
+      
+      // Get updated user data
+      const { data } = await supabase.auth.getUser();
+      
+      if (!data.user) {
+        throw new Error("Failed to update profile");
+      }
+      
+      // Update the user state with the new profile info
       const updatedUser = {
         ...user!,
         ...profile,
@@ -140,7 +154,7 @@ const App = () => {
             
             <Route path="/auth" element={<MainLayout user={user} loading={loading} requireAuth={false} onLogout={handleLogout} />}>
               <Route index element={
-                user ? <Navigate to="/" replace /> : <Auth onSignIn={handleSignIn} onSignUp={handleSignUp} loading={loading} />
+                user ? <Navigate to="/" replace /> : <Auth />
               } />
             </Route>
             
