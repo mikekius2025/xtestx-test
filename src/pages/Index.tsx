@@ -33,15 +33,89 @@ const Index = ({ user: propUser, posts: propPosts }: IndexProps) => {
     }
   }, [propPosts]);
 
-  // Empty fetch posts function - will be implemented with Supabase
+  // Fetch posts from Supabase when user is logged in
+  useEffect(() => {
+    if (user) {
+      fetchPosts();
+    }
+  }, [user]);
+
+  // Fetch posts from Supabase
   const fetchPosts = async () => {
     try {
-      // Will be replaced with actual Supabase query
-      return [];
+      setLoading(true);
+      
+      // Get posts with author details and like counts
+      const { data: postsData, error } = await supabase
+        .from('posts')
+        .select(`
+          *,
+          profiles:author_id (
+            id,
+            username,
+            avatar_url
+          )
+        `)
+        .is('parent_id', null)  // Only get main posts, not replies
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      // For each post, get the like count
+      const postsWithCounts = await Promise.all(postsData.map(async (post) => {
+        // Get like count
+        const { count: likesCount, error: likesError } = await supabase
+          .from('likes')
+          .select('*', { count: 'exact', head: true })
+          .eq('post_id', post.id);
+        
+        // Get reply count
+        const { count: repliesCount, error: repliesError } = await supabase
+          .from('posts')
+          .select('*', { count: 'exact', head: true })
+          .eq('parent_id', post.id);
+        
+        // Check if current user has liked this post
+        const { data: userLikes, error: userLikesError } = await supabase
+          .from('likes')
+          .select('*')
+          .eq('post_id', post.id)
+          .eq('user_id', user?.id);
+        
+        const hasLiked = userLikes && userLikes.length > 0;
+        
+        if (likesError || repliesError || userLikesError) {
+          console.error("Error getting post details:", { likesError, repliesError, userLikesError });
+        }
+        
+        // Format the post to match our Post type
+        return {
+          id: post.id,
+          content: post.content,
+          user_id: post.author_id,
+          created_at: post.created_at,
+          parent_id: post.parent_id,
+          user: {
+            id: post.profiles.id,
+            username: post.profiles.username,
+            avatar_url: post.profiles.avatar_url,
+            email: '',  // Email isn't included in profiles for privacy
+            created_at: ''  // We don't need created_at for display
+          },
+          likes_count: likesCount || 0,
+          replies_count: repliesCount || 0,
+          has_liked: hasLiked
+        };
+      }));
+      
+      setPosts(postsWithCounts);
+      
     } catch (error) {
       console.error("Fetch posts error:", error);
       toast.error("Failed to load posts. Please try again.");
       return [];
+    } finally {
+      setLoading(false);
     }
   };
 

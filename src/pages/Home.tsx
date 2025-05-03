@@ -4,6 +4,7 @@ import CreatePostForm from "@/components/posts/CreatePostForm";
 import PostList from "@/components/posts/PostList";
 import { Post, User } from "@/types";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface HomeProps {
   user: User;
@@ -21,9 +22,17 @@ const Home = ({ user, posts, fetchPosts, loading }: HomeProps) => {
   const handleCreatePost = async (content: string) => {
     setCreateLoading(true);
     try {
-      // In a completed app with Supabase, this would create a real post
-      console.log("Creating post with content:", content);
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API call
+      // Create post in Supabase
+      const { data, error } = await supabase
+        .from('posts')
+        .insert({
+          content,
+          author_id: user.id
+        })
+        .select();
+      
+      if (error) throw error;
+      
       toast.success("Post created");
       await fetchPosts(); // Refetch posts
     } catch (error) {
@@ -35,11 +44,41 @@ const Home = ({ user, posts, fetchPosts, loading }: HomeProps) => {
   };
   
   const handleLike = async (postId: string) => {
+    if (!user) {
+      toast.error("You must be logged in to like posts");
+      return;
+    }
+    
     setLikeLoading(true);
     try {
-      // In a completed app with Supabase, this would toggle a like
-      console.log("Liking post:", postId);
-      await new Promise(resolve => setTimeout(resolve, 300)); // Simulate API call
+      // Check if the user has already liked this post
+      const { data: existingLikes } = await supabase
+        .from('likes')
+        .select('*')
+        .eq('post_id', postId)
+        .eq('user_id', user.id);
+      
+      if (existingLikes && existingLikes.length > 0) {
+        // User has already liked this post, so unlike it
+        const { error } = await supabase
+          .from('likes')
+          .delete()
+          .eq('post_id', postId)
+          .eq('user_id', user.id);
+          
+        if (error) throw error;
+      } else {
+        // User has not liked this post yet, so add a like
+        const { error } = await supabase
+          .from('likes')
+          .insert({
+            post_id: postId,
+            user_id: user.id
+          });
+          
+        if (error) throw error;
+      }
+      
       await fetchPosts(); // Refetch posts
     } catch (error) {
       console.error("Like post error:", error);
@@ -52,9 +91,15 @@ const Home = ({ user, posts, fetchPosts, loading }: HomeProps) => {
   const handleDelete = async (postId: string) => {
     setDeleteLoading(true);
     try {
-      // In a completed app with Supabase, this would delete the post
-      console.log("Deleting post:", postId);
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API call
+      // Delete post from Supabase
+      const { error } = await supabase
+        .from('posts')
+        .delete()
+        .eq('id', postId)
+        .eq('author_id', user.id); // Ensure current user is the author
+      
+      if (error) throw error;
+      
       toast.success("Post deleted");
       await fetchPosts(); // Refetch posts
     } catch (error) {
@@ -68,9 +113,18 @@ const Home = ({ user, posts, fetchPosts, loading }: HomeProps) => {
   const handleReply = async (content: string, parentId: string) => {
     setReplyLoading(true);
     try {
-      // In a completed app with Supabase, this would create a reply
-      console.log("Replying to post:", parentId, "with content:", content);
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API call
+      // Create reply in Supabase
+      const { data, error } = await supabase
+        .from('posts')
+        .insert({
+          content,
+          parent_id: parentId,
+          author_id: user.id
+        })
+        .select();
+      
+      if (error) throw error;
+      
       toast.success("Reply posted");
       await fetchPosts(); // Refetch posts
     } catch (error) {

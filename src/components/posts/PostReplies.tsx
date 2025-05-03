@@ -1,118 +1,204 @@
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Post, User } from "@/types";
-import PostItem from "./PostItem";
 import CreatePostForm from "./CreatePostForm";
+import PostItem from "./PostItem";
+import { supabase } from "@/integrations/supabase/client";
 
 interface PostRepliesProps {
   parentPost: Post;
-  currentUser: User;
+  currentUser: User | null;
   onReply: (content: string, parentId: string) => Promise<void>;
   replyLoading: boolean;
   showForm: boolean;
   showReplies: boolean;
 }
 
-const PostReplies = ({ 
-  parentPost, 
-  currentUser, 
-  onReply, 
-  replyLoading, 
+const PostReplies = ({
+  parentPost,
+  currentUser,
+  onReply,
+  replyLoading,
   showForm,
-  showReplies
+  showReplies,
 }: PostRepliesProps) => {
   const [replies, setReplies] = useState<Post[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // In a real app, we would fetch replies from Supabase here
-  // For now, we'll just simulate it with dummy data
   useEffect(() => {
     if (showReplies) {
+      fetchReplies();
+    }
+  }, [showReplies, parentPost.id]);
+
+  const fetchReplies = async () => {
+    try {
       setLoading(true);
       
-      // This would be replaced with a real API call to get replies
-      const simulatedApiCall = setTimeout(() => {
-        // Dummy replies data for demo purposes
-        const dummyReplies = parentPost.replies_count ? Array(Math.min(parentPost.replies_count, 2)).fill(0).map((_, i) => ({
-          id: `reply-${parentPost.id}-${i}`,
-          user_id: currentUser.id,
-          content: `This is a sample reply to demonstrate the UI. In a real app, this would be fetched from Supabase.`,
-          created_at: new Date().toISOString(),
-          parent_id: parentPost.id,
-          user: currentUser,
-          likes_count: 0,
-          replies_count: 0,
-          has_liked: false
-        })) : [];
-        
-        setReplies(dummyReplies);
-        setLoading(false);
-      }, 500);
+      const { data: repliesData, error } = await supabase
+        .from('posts')
+        .select(`
+          *,
+          profiles:author_id (
+            id,
+            username,
+            avatar_url
+          )
+        `)
+        .eq('parent_id', parentPost.id)
+        .order('created_at', { ascending: true });
       
-      return () => clearTimeout(simulatedApiCall);
+      if (error) throw error;
+      
+      // Format replies to match our Post type and add like counts
+      const formattedReplies = await Promise.all(repliesData.map(async (reply) => {
+        // Get like count for the reply
+        const { count: likesCount, error: likesError } = await supabase
+          .from('likes')
+          .select('*', { count: 'exact', head: true })
+          .eq('post_id', reply.id);
+          
+        // Check if current user has liked this reply
+        const { data: userLikes, error: userLikesError } = await supabase
+          .from('likes')
+          .select('*')
+          .eq('post_id', reply.id)
+          .eq('user_id', currentUser?.id);
+          
+        if (likesError || userLikesError) {
+          console.error("Error fetching reply details:", { likesError, userLikesError });
+        }
+        
+        return {
+          id: reply.id,
+          content: reply.content,
+          user_id: reply.author_id,
+          created_at: reply.created_at,
+          parent_id: reply.parent_id,
+          user: {
+            id: reply.profiles.id,
+            username: reply.profiles.username,
+            avatar_url: reply.profiles.avatar_url,
+            email: '',
+            created_at: ''
+          },
+          likes_count: likesCount || 0,
+          has_liked: userLikes && userLikes.length > 0
+        };
+      }));
+      
+      setReplies(formattedReplies);
+    } catch (error) {
+      console.error("Error fetching replies:", error);
+    } finally {
+      setLoading(false);
     }
-  }, [showReplies, parentPost, currentUser]);
-  
-  const handleReply = async (content: string) => {
-    await onReply(content, parentPost.id);
-    
-    // In a real app, we would fetch the updated replies
-    // or add the new reply to the list optimistically
   };
 
-  // Placeholder handlers that would be implemented with real Supabase calls
-  const handleLike = async () => {
-    // This would call a real like handler in a complete app
-    console.log("Like functionality would be implemented with Supabase");
-    return Promise.resolve();
+  // Handle replying to a post
+  const handleReplyToPost = async (content: string) => {
+    await onReply(content, parentPost.id);
+    
+    // After replying, refresh the replies
+    if (showReplies) {
+      fetchReplies();
+    }
   };
   
-  const handleDelete = async () => {
-    // This would call a real delete handler in a complete app
-    console.log("Delete functionality would be implemented with Supabase");
-    return Promise.resolve();
+  // Handle liking a reply
+  const handleLike = async (replyId: string) => {
+    if (!currentUser) return;
+    
+    try {
+      // Check if user has already liked this reply
+      const { data: existingLikes } = await supabase
+        .from('likes')
+        .select('*')
+        .eq('post_id', replyId)
+        .eq('user_id', currentUser.id);
+      
+      if (existingLikes && existingLikes.length > 0) {
+        // Unlike
+        await supabase
+          .from('likes')
+          .delete()
+          .eq('post_id', replyId)
+          .eq('user_id', currentUser.id);
+      } else {
+        // Like
+        await supabase
+          .from('likes')
+          .insert({
+            post_id: replyId,
+            user_id: currentUser.id
+          });
+      }
+      
+      // Refresh replies to show updated likes
+      fetchReplies();
+    } catch (error) {
+      console.error("Error handling reply like:", error);
+    }
   };
   
+  // Handle deleting a reply
+  const handleDelete = async (replyId: string) => {
+    if (!currentUser) return;
+    
+    try {
+      await supabase
+        .from('posts')
+        .delete()
+        .eq('id', replyId)
+        .eq('author_id', currentUser.id);
+      
+      // Refresh replies
+      fetchReplies();
+    } catch (error) {
+      console.error("Error deleting reply:", error);
+    }
+  };
+
   return (
-    <div className="ml-8 border-l-2 border-gray-100 pl-4 mt-2">
-      {showForm && (
+    <div className="pl-4 border-l border-gray-100 mt-2">
+      {showForm && currentUser && (
         <CreatePostForm
           user={currentUser}
-          onCreatePost={handleReply}
+          onCreatePost={handleReplyToPost}
           loading={replyLoading}
           parentId={parentPost.id}
           placeholder="Write a reply..."
-          isReply={true}
+          isReply
         />
       )}
-      
+
       {showReplies && (
-        <div className="space-y-3 mt-3">
+        <div className="space-y-3 mt-2">
           {loading ? (
-            <div className="animate-pulse p-3">
-              <div className="flex gap-2">
-                <div className="h-8 w-8 rounded-full bg-gray-200"></div>
-                <div className="flex-1">
-                  <div className="h-3 w-20 mb-2 bg-gray-200 rounded"></div>
-                  <div className="h-2 w-full mb-1 bg-gray-100 rounded"></div>
-                </div>
+            <div className="animate-pulse flex space-x-4">
+              <div className="h-10 w-10 bg-gray-200 rounded-full"></div>
+              <div className="flex-1 space-y-2 py-1">
+                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                <div className="h-4 bg-gray-200 rounded"></div>
               </div>
             </div>
-          ) : (
-            replies.map(reply => (
+          ) : replies.length > 0 ? (
+            replies.map((reply) => (
               <PostItem
                 key={reply.id}
                 post={reply}
                 currentUser={currentUser}
                 onLike={handleLike}
                 onDelete={handleDelete}
-                onReply={handleReply}
+                onReply={() => {}} // Replies cannot have replies for now
                 likeLoading={false}
                 deleteLoading={false}
-                replyLoading={replyLoading}
-                isReply={true}
+                replyLoading={false}
+                isReply
               />
             ))
+          ) : (
+            <p className="text-gray-500 text-sm">No replies yet</p>
           )}
         </div>
       )}
