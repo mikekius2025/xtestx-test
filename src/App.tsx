@@ -14,6 +14,7 @@ import MainLayout from "./components/layout/MainLayout";
 import { User, UserProfile } from "./types";
 import { supabase } from "@/integrations/supabase/client";
 import { Session } from "@supabase/supabase-js";
+import { toast } from "sonner";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,13 +37,7 @@ const App = () => {
       (event, newSession) => {
         setSession(newSession);
         if (newSession?.user) {
-          const userData: User = {
-            id: newSession.user.id,
-            email: newSession.user.email || '',
-            username: newSession.user.user_metadata.username || '',
-            created_at: newSession.user.created_at
-          };
-          setUser(userData);
+          fetchUserProfile(newSession.user.id);
         } else {
           setUser(null);
         }
@@ -54,19 +49,43 @@ const App = () => {
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
       setSession(currentSession);
       if (currentSession?.user) {
-        const userData: User = {
-          id: currentSession.user.id,
-          email: currentSession.user.email || '',
-          username: currentSession.user.user_metadata.username || '',
-          created_at: currentSession.user.created_at
-        };
-        setUser(userData);
+        fetchUserProfile(currentSession.user.id);
+      } else {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
   }, []);
+  
+  const fetchUserProfile = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      
+      if (error) throw error;
+      
+      if (data) {
+        const userData: User = {
+          id: userId,
+          email: session?.user?.email || '',
+          username: data.username || session?.user?.user_metadata.username || '',
+          avatar_url: data.avatar_url || '',
+          bio: data.bio || '',
+          created_at: session?.user?.created_at || '',
+          updated_at: data.updated_at
+        };
+        setUser(userData);
+      }
+    } catch (error) {
+      console.error("Error fetching profile:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
   
   const handleLogout = async () => {
     setLoading(true);
@@ -77,9 +96,10 @@ const App = () => {
       }
       setUser(null);
       setSession(null);
+      toast.success("Logged out successfully");
     } catch (error) {
       console.error("Logout error:", error);
-      throw new Error("Logout failed");
+      toast.error("Logout failed");
     } finally {
       setLoading(false);
     }
@@ -108,33 +128,49 @@ const App = () => {
   const handleUpdateProfile = async (profile: UserProfile): Promise<User> => {
     setLoading(true);
     try {
-      // Update user metadata in Supabase
-      const { error } = await supabase.auth.updateUser({
-        data: profile
-      });
-      
-      if (error) {
-        throw error;
+      if (!user || !session) {
+        throw new Error("Not authenticated");
       }
       
-      // Get updated user data
-      const { data } = await supabase.auth.getUser();
+      // Update profile in Supabase profiles table
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          username: profile.username,
+          avatar_url: profile.avatar_url,
+          bio: profile.bio,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id);
       
-      if (!data.user) {
-        throw new Error("Failed to update profile");
+      if (updateError) {
+        throw updateError;
+      }
+      
+      // Also update username in auth metadata if it changed
+      if (profile.username !== user.username) {
+        const { error } = await supabase.auth.updateUser({
+          data: { username: profile.username }
+        });
+        
+        if (error) {
+          throw error;
+        }
       }
       
       // Update the user state with the new profile info
       const updatedUser = {
-        ...user!,
+        ...user,
         ...profile,
         updated_at: new Date().toISOString()
       };
       
       setUser(updatedUser);
+      toast.success("Profile updated successfully");
       return updatedUser;
-    } catch (error) {
+    } catch (error: any) {
       console.error("Update profile error:", error);
+      toast.error("Profile update failed: " + (error.message || "Please try again"));
       throw new Error("Profile update failed");
     } finally {
       setLoading(false);

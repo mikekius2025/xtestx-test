@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Link, useNavigate } from "react-router-dom";
 import { Post, User } from "@/types";
 import Home from "./Home";
-import { supabaseClient } from "@/lib/supabase";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 interface IndexProps {
@@ -18,40 +18,11 @@ const Index = ({ user: propUser, posts: propPosts }: IndexProps) => {
   const [loading, setLoading] = useState(!propUser);
   const navigate = useNavigate();
 
-  // In a real app with Supabase, we would use this to check for an existing session
-  useEffect(() => {
-    // If user is provided through props, use that instead of checking
-    if (propUser) {
-      setUser(propUser);
-      setLoading(false);
-      return;
-    }
-
-    const checkSession = async () => {
-      setLoading(true);
-      try {
-        // Simulate loading the user session
-        await new Promise(resolve => setTimeout(resolve, 800));
-        
-        // No user session for now - in a complete app, this would check Supabase Auth
-        setUser(null);
-        
-        // Load empty posts array since demo is removed
-        setPosts([]);
-      } catch (error) {
-        console.error("Session check error:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkSession();
-  }, [propUser]);
-
   // Update user state when prop changes
   useEffect(() => {
     if (propUser) {
       setUser(propUser);
+      setLoading(false);
     }
   }, [propUser]);
 
