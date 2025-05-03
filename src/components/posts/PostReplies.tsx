@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { Post, User } from "@/types";
 import CreatePostForm from "./CreatePostForm";
@@ -159,6 +158,13 @@ const PostReplies = ({
     }
   };
 
+  // Create a proper async function for the onReply prop to match the expected type
+  const handleReplyToReply = async (content: string, parentId: string): Promise<void> => {
+    // For now, we're not supporting nested replies, but we need to return a Promise<void>
+    // to satisfy TypeScript
+    return Promise.resolve();
+  };
+
   return (
     <div className="pl-4 border-l border-gray-100 mt-2">
       {showForm && currentUser && (
@@ -190,7 +196,7 @@ const PostReplies = ({
                 currentUser={currentUser}
                 onLike={handleLike}
                 onDelete={handleDelete}
-                onReply={() => {}} // Replies cannot have replies for now
+                onReply={handleReplyToReply} // Using the new async function that returns a Promise
                 likeLoading={false}
                 deleteLoading={false}
                 replyLoading={false}
